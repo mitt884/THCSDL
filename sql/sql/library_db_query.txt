@@ -1,0 +1,265 @@
+--- TRUY VẤN 1: ĐƯA RA DANH SÁCH NHỮNG NGƯỜI TRẢ SÁCH MUỘN TÍNH ĐẾN NGÀY 17/06/2024 ---
+--- Cách 1 ---
+    
+	SELECT r.reader_id, full_name, title, borrow_date, number_of_copies
+	FROM   reader r, book b, borrow_return br
+	WHERE  r.reader_id = br.reader_id
+	AND    b.ISBN = br.ISBN
+	AND    actual_return_date IS Null
+	AND    initial_due_date < '2024-06-17';
+
+--- Cách 2 ---
+	CREATE INDEX borrow_return_index3 ON borrow_return(actual_return_date, initial_due_date);
+	
+	SELECT r1.reader_id, full_name, title, borrow_date, number_of_copies AS number_borrow
+	FROM
+		(SELECT reader_id, title, borrow_date, number_of_copies
+		 FROM
+			 (SELECT ISBN, title FROM book) AS b1,
+			 (SELECT ISBN, reader_id, borrow_date, number_of_copies FROM borrow_return
+			  WHERE  initial_due_date < '2024-06-17'
+			  AND    actual_return_date IS NULL) AS br1  
+		 WHERE b1.ISBN = br1.ISBN) AS bbr1,
+		(SELECT reader_id, full_name FROM reader r) AS r1 
+	WHERE bbr1.reader_id = r1.reader_id;
+
+--- TRUY VẤN 2: ĐƯA RA DANH SÁCH NHỮNG ĐẦU SÁCH ĐƯỢC XUẤT BẢN TỪ NĂM 2016 ĐẾN NAY CÓ THỂ MƯỢN Ở PHÒNG 101 ---
+
+--- Cách 1---
+SELECT ISBN, title, room_name
+FROM   book b, genre g, room r
+WHERE  b.category_id = g.genre_id
+AND    g.find_in_room_id = r.room_id
+AND    room_name = 'Phong 101'
+AND    published_year >= 2016
+AND    current_number_of_copies > 0;
+
+--- Cách 2 ---
+
+SELECT ISBN, title, room_name
+FROM 
+(
+	SELECT room_id, room_name
+	FROM   room
+	WHERE  room_name = 'Phong 101'
+) AS query1
+INNER JOIN(
+	SELECT ISBN, title, find_in_room_id
+	FROM(
+		SELECT genre_id, find_in_room_id
+		FROM   genre
+	) AS subquery1
+	INNER JOIN(
+		SELECT ISBN, title, category_id
+		FROM   book
+		WHERE  published_year >= 2016
+                AND    current_number_of_copies > 0
+	) AS subquery2 ON subquery1.genre_id = subquery2.category_id
+) AS query2 ON query1.room_id = query2.find_in_room_id;
+
+--- TRUY VẤN 3: ĐƯA RA DANH SÁCH NHỮNG NHÂN VIÊN ĐÃ THỰC HIỆN NHẬP SÁCH TỪ NĂM 2020 CÙNG TÊN SÁCH NHẬP VỀ VÀ SỐ LƯỢNG TƯƠNG ỨNG ---
+
+--- Cách 1---
+SELECT s.staff_id, full_name, b.ISBN, title, number_of_copies AS number_import
+FROM   staff s, import i, book b
+WHERE  s.staff_id = i.confirmer_id
+AND    b.ISBN = i.ISBN
+AND    EXTRACT(YEAR FROM import_date) >= '2020';
+
+--- Cách 2---
+
+SELECT si1.staff_id, full_name, b1.ISBN, title, number_of_copies AS number_import 
+FROM (
+            SELECT staff_id, full_name, ISBN, number_of_copies 
+	    FROM
+		(SELECT staff_id, full_name FROM staff) AS s1,
+		(SELECT confirmer_id, ISBN, number_of_copies FROM import
+		 WHERE EXTRACT(YEAR FROM import_date) >= '2020') AS i1
+	    WHERE s1.staff_id = i1.confirmer_id
+	) AS si1,
+	(SELECT ISBN, title FROM book) AS b1 
+WHERE si1.ISBN = b1.ISBN;
+
+--- TRUY VẤN 4: ĐƯA RA DANH SÁCH TOP 10 CÁC ĐẦU SÁCH CÓ LƯỢT MƯỢN NHIỀU NHẤT NĂM 2023 ---
+SELECT b.ISBN, title
+ FROM(
+	 SELECT ISBN, COUNT(ISBN) AS number_borrow
+	 FROM   borrow_return
+	 WHERE  EXTRACT(YEAR FROM borrow_date) = '2023'
+	 GROUP BY ISBN
+	 ORDER BY number_borrow DESC
+	 LIMIT 10) AS query1, book AS b
+ WHERE b.ISBN = query1.ISBN;
+
+--- TRUY VẤN 5: ĐƯA RA TOP 10 NXB CUNG CẤP SÁCH CHO THƯ VIỆN TRONG NĂM 2022 ÍT NHẤT ---
+
+  SELECT name, email
+  FROM(
+	  SELECT ISBN, COUNT(ISBN) AS number_import
+	  FROM   import
+	  WHERE  EXTRACT(YEAR FROM import_date) = '2022'
+	  GROUP BY ISBN
+	  ORDER BY number_import ASC
+	  LIMIT 10
+  ) AS query1, book b, publisher p
+  WHERE p.publisher_id = b.publisher_id
+  AND   query1.ISBN = b.ISBN;
+
+--- TRUY VẤN 6: ĐƯA RA TỔNG GIÁ TIỀN CHO TỪNG ĐẦU SÁCH ĐƯỢC NHẬP VỀ TRONG NGÀY 19/6/2023 ---
+
+  SELECT import_no, b.ISBN, title, number_of_copies AS number_import, 
+         cost AS cost_per_1_book, (cost * number_of_copies) AS total_cost
+  FROM   book b, import i
+  WHERE  b.ISBN = i.ISBN
+  AND    import_date = '2023-06-19';
+  
+--- TRUY VẤN 7: THỐNG KÊ TỔNG SỐ TIỀN CHI CHO VIỆC NHẬP SÁCH TRONG THÁNG 1/2024 ---
+
+  SELECT SUM((cost * number_of_copies)) AS total_cost_of_import
+  FROM   book b, import i
+  WHERE  b.ISBN = i.ISBN
+  AND    EXTRACT(YEAR FROM import_date) = '2024'
+  AND    EXTRACT(MONTH FROM import_date) = '1';
+  
+--- TRUY VẤN 8: ĐƯA RA DANH SÁCH CÁC BẠN ĐỌC MƯỢN SÁCH TRONG NGÀY 29/11/2023, SỐ LƯỢNG ĐẦU SÁCH ĐÃ MƯỢN CÙNG SỐ LƯỢNG QUYỂN SÁCH ĐÃ MƯỢN ---
+
+  SELECT r.reader_id, full_name, total_number_of_book, total_number_of_copies
+  FROM
+  (
+	  SELECT reader_id, COUNT(ISBN) AS total_number_of_book,
+	         SUM(number_of_copies) AS total_number_of_copies
+	  FROM   borrow_return
+	  WHERE  borrow_date = '2023-11-29'
+	  GROUP BY reader_id
+  ) AS q1, reader r
+  WHERE r.reader_id = q1.reader_id;
+ 
+--- TRIGGER 1: UPDATE số lượng sách khi bạn đọc mượn/trả sách ---
+ CREATE OR REPLACE FUNCTION update_book_copies()
+ RETURNS TRIGGER AS $$
+ BEGIN
+    IF (TG_OP = 'INSERT') THEN
+        -- When a new borrow record is inserted
+        UPDATE BOOK
+        SET current_number_of_copies = current_number_of_copies - NEW.number_of_copies
+        WHERE ISBN = NEW.ISBN;
+        RETURN NEW;
+    ELSIF (TG_OP = 'UPDATE') THEN
+        -- When a book is returned (update actual_return_date)
+        IF NEW.actual_return_date IS NOT NULL AND OLD.actual_return_date IS NULL THEN
+            UPDATE BOOK
+            SET current_number_of_copies = current_number_of_copies + NEW.number_of_copies
+            WHERE ISBN = NEW.ISBN;
+        END IF;
+        RETURN NEW;
+    END IF;
+    RETURN NULL; -- Return NULL if the operation is not handled
+ END;
+ $$ LANGUAGE plpgsql;
+ 
+ CREATE TRIGGER after_reader_borrow
+ AFTER INSERT ON borrow_return
+ FOR EACH ROW
+ EXECUTE FUNCTION update_book_copies();
+ 
+ CREATE TRIGGER after_reader_return
+ AFTER UPDATE OF actual_return_date ON borrow_return
+ FOR EACH ROW
+ EXECUTE FUNCTION update_book_copies();
+
+--- TRIGGER 2: UPDATE SỐ LƯỢNG SÁCH KHI CÓ NHÂN VIÊN NHẬP SÁCH VỀ THƯ VIỆN ---
+ CREATE OR REPLACE FUNCTION staff_import_book() RETURNS TRIGGER AS $$
+  BEGIN
+     UPDATE book
+	 SET current_number_of_copies = current_number_of_copies + NEW.number_of_copies
+	 WHERE ISBN = NEW.ISBN;
+     RETURN NEW;
+  END;
+  $$
+  LANGUAGE plpgsql;
+  
+  CREATE TRIGGER after_import_book
+  AFTER INSERT ON import
+  FOR EACH ROW
+  EXECUTE FUNCTION staff_import_book();
+
+--- TRIGGER 3: ĐƯA RA THÔNG BÁO LỖI KHI SỐ LƯỢNG MƯỢN < SỐ LƯỢNG HIỆN CÓ ---
+ CREATE OR REPLACE FUNCTION check_book_availability()
+ RETURNS TRIGGER AS $$
+ BEGIN
+    -- Check if the number of copies to borrow is greater than available copies
+    IF ( NEW.number_of_copies > 
+		(SELECT current_number_of_copies FROM BOOK WHERE ISBN = NEW.ISBN)) THEN
+        RAISE EXCEPTION 'Not enough books to borrow';
+    END IF;
+    RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+
+ CREATE TRIGGER check_availability_before_insert
+ BEFORE INSERT ON borrow_return
+ FOR EACH ROW
+ EXECUTE FUNCTION check_book_availability();
+
+--- FUNCTION 1: Tính tổng tiền nhập sách cho tháng x, năm y ---
+
+ CREATE OR REPLACE FUNCTION total_cost_import_book(month NUMERIC, year NUMERIC) 
+ RETURNS NUMERIC AS $$
+ DECLARE total_cost NUMERIC = 0;
+ BEGIN
+    SELECT SUM(cost * number_of_copies) INTO total_cost
+	FROM book b, import i
+	WHERE b.ISBN = i.ISBN
+	AND EXTRACT(MONTH FROM import_date) = month
+	AND EXTRACT(YEAR FROM import_date) = year;
+	RETURN total_cost; 
+ END
+ $$
+ LANGUAGE plpgsql;
+
+--- FUNCTION 2: Tính tổng số sách đang được mượn cho đầu sách x tại thời điểm y ---
+ 
+ CREATE OR REPLACE FUNCTION count_total_borrow_copies(book_id CHAR(10), p_borrow_date DATE)
+ RETURNS numeric AS $$
+ DECLARE borrowed_copies NUMERIC = 0;
+ BEGIN
+     SELECT SUM(number_of_copies) INTO borrowed_copies
+	 FROM  borrow_return
+	 WHERE ISBN = book_id
+	 AND borrow_date = p_borrow_date;
+	 RETURN borrowed_copies;
+ END
+ $$
+ LANGUAGE plpgsql;
+
+--- FUNCTION 3: Đưa ra tên trưởng phòng và số nhân viên của một phòng bất kỳ ---
+
+ CREATE TYPE manager_and_employees AS (
+    manager_name VARCHAR,
+    number_employees NUMERIC
+ );
+
+ CREATE OR REPLACE FUNCTION find_manager_and_number_of_employees(p_room_name VARCHAR) 
+                            RETURNS manager_and_employees AS $$
+ DECLARE result manager_and_employees;
+ BEGIN
+        result.manager_name = Null;
+	result.number_employees = 0;
+    --- Find the manager's name
+    SELECT full_name INTO result.manager_name
+	FROM  room r, staff s
+	WHERE r.room_id = s.office_id
+	AND   r.manager_id = s.staff_id
+	AND   room_name = p_room_name;
+	--- Find the number of employees
+	SELECT COUNT(staff_id) INTO result.number_employees
+	FROM  room r, staff s
+	WHERE r.room_id = s.office_id
+	AND   room_name = p_room_name;
+	RETURN result;
+ END;
+ $$
+ LANGUAGE plpgsql;
+
+
+
